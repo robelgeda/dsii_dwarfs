@@ -1,12 +1,15 @@
-Test the efficacy of convolutional neural networks (CNN) in identifying diffuse dwarfs.
----------------------------------------------------------------------------------------
+Near-Field Cosmology with Gas-Poor Dwarf Galaxies
+--------------------------------------------------
 
 .. image:: http://img.shields.io/badge/powered%20by-AstroPy-orange.svg?style=flat
     :target: http://www.astropy.org
     :alt: Powered by Astropy Badge
 
 
-
+The space density of gas-poor dwarf galaxies provides an important constraint on LCDM galaxyformation
+models. We propose to test the efficacy of convolutional neural networks (CNN) in
+identifying such diffuse dwarfs within distances of ~2-30 Mpc and estimating their distances, via
+their distinct morphologies, for survey data comparable to LSST and WFIRST.
 
 License
 -------
