@@ -1,10 +1,9 @@
-Near-Field Cosmology with Gas-Poor Dwarf Galaxies
---------------------------------------------------
-
 .. image:: http://img.shields.io/badge/powered%20by-AstroPy-orange.svg?style=flat
     :target: http://www.astropy.org
     :alt: Powered by Astropy Badge
-
+    
+Near-Field Cosmology with Gas-Poor Dwarf Galaxies
+--------------------------------------------------
 
 The space density of gas-poor dwarf galaxies provides an important constraint on LCDM galaxyformation
 models. We propose to test the efficacy of convolutional neural networks (CNN) in
