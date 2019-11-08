@@ -1,6 +1,6 @@
 import numpy as np
-from make_galaxies_uniform_distmass import SimulateRandomDwarfElliptical,simulate_HSC
-import make_galaxies_uniform_distmass
+from .make_galaxies_uniform_distmass import SimulateRandomDwarfElliptical,simulate_HSC
+from . import make_galaxies_uniform_distmass
 
 for i in range(2000):
     print(f"Galaxy {i} ------------------------------------------------------------------")

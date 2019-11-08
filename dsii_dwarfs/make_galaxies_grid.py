@@ -1,15 +1,9 @@
 # Create a bunch of fake dE galaxies
 # With a specific set of parameters rather than random
+import os
 
-from axial_ratio_picker import AxialRatioPDF
-from distance_picker import DistancePicker
-from isochrone_picker import isochrone_picker
-from noise_picker import NoisePicker
-from psf_picker import HSCMoffatPSFPicker 
-from schechter_picker import schechter_picker
-from size_picker import SizePicker
-import imf # https://github.com/keflavich/imf
 import numpy as np
+
 from astropy.cosmology import Planck15 as cosmo
 from astropy.cosmology import z_at_value
 import astropy.units as u
@@ -18,7 +12,16 @@ from scipy import integrate, stats
 from astropy import modeling
 from astropy.table import Table
 from astropy.io import fits
-import os
+
+import imf # https://github.com/keflavich/imf
+
+from .axial_ratio_picker import AxialRatioPDF
+from .distance_picker import DistancePicker
+from .isochrone_picker import isochrone_picker
+from .noise_picker import NoisePicker
+from .psf_picker import HSCMoffatPSFPicker
+from .schechter_picker import schechter_picker
+from .size_picker import SizePicker
 
 class SimulateDwarfElliptical:
     def __init__(self,noise_rms=0.02,

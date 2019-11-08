@@ -1,5 +1,5 @@
 import numpy as np
-import make_galaxies_grid
+from . import make_galaxies_grid
 
 def dist_mass():
   for d in [2.,4.,8.,16.]:

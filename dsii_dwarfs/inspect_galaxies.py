@@ -1,6 +1,6 @@
 import numpy as np
-from make_galaxies import SimulateRandomDwarfElliptical,simulate_HSC
-import make_galaxies
+from .make_galaxies import SimulateRandomDwarfElliptical,simulate_HSC
+from . import make_galaxies
 from astropy.convolution import convolve_fft
 import matplotlib.pyplot as plt
 
