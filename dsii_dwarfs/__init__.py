@@ -3,6 +3,7 @@
 # Packages may add whatever they like to this file, but
 # should keep this content at the top.
 # ----------------------------------------------------------------------------
+import os
 from ._astropy_init import *   # noqa
 # ----------------------------------------------------------------------------
 
@@ -27,3 +28,5 @@ if LooseVersion(sys.version) < LooseVersion(__minimum_python_version__):
 if not _ASTROPY_SETUP_:   # noqa
     # For egg_info test builds to pass, put package imports here.
     pass
+
+DATA_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'data')
