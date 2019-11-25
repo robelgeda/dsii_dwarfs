@@ -3,10 +3,15 @@ import numpy as np
 class DistancePicker:
     """
     Select a random distance for population with a uniform density
+
+    Parameters
+    ----------
+    dmin, dmax : float
+        Minimum and maximum distances in Mpc
     """
-    def __init__(self, dmax, dmin=0.):
-        """ 
-        Initialise: Set the minimum and maximum distance in MPc
+    def __init__(self, dmin=0., dmax=15.):
+        """
+        Initialise: Set the minimum and maximum distance in Mpc
         """
         self.dmin = dmin
         self.dmin2 = dmin**2
