@@ -25,12 +25,16 @@ class AxialRatioPDF(rv_continuous):
     While it's not necessary to add the _cdf routine, it speeds up the rvs draws by a huge factor
     """
 
-    def __init__(self,**args):
-        super(AxialRatioPDF,self).__init__(a=0.,b=1.,**args)
-#        self.qdist = Table.read('data/sanchez-janssen_fig9.txt',format='ascii.commented_header')
+    def __init__(self, **args):
+        super(AxialRatioPDF,self).__init__(a=0., b=1., **args)
+
+        #self.qdist = Table.read('data/sanchez-janssen_fig9.txt',format='ascii.commented_header')
         self.qdist = sanchez_jansen()
+
         self.normalization = integrate.trapz(self.qdist['pdf'],self.qdist['q'])
+
         self.qfunc = interpolate.interp1d(self.qdist['q'],self.qdist['pdf'],kind='linear')
+
         qsamples = np.arange(0,1.01,0.01)
         cdf_samples = np.array([integrate.quad(self._pdf,0,q)[0] for q in qsamples])
         self.cfunc = interpolate.interp1d(qsamples,cdf_samples)
