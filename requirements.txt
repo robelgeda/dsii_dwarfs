@@ -1,0 +1,4 @@
+numpy
+scipy
+astropy
+-e git://github.com/keflavich/imf#egg=imf
