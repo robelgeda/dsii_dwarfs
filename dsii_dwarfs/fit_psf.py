@@ -11,7 +11,12 @@ from matplotlib import pyplot as plt
 
 class FitPSF:
     """
-    Class to  fit HSC PSFs
+    Class to  fit HSC PSFs using PSF files
+
+    Parameters
+    ----------
+    filename : str
+        path to PSF file
     """
     def __init__(self, filename):
         self.filename = filename
