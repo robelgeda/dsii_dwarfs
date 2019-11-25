@@ -18,6 +18,7 @@ class FitPSF:
     filename : str
         path to PSF file
     """
+
     def __init__(self, filename):
         self.filename = filename
 
