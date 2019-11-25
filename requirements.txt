@@ -1,4 +1,5 @@
 numpy
 scipy
 astropy
+matplotlib
 -e git://github.com/keflavich/imf#egg=imf
