@@ -91,3 +91,5 @@ def find_hsc_files(hsc_top_path, verbose=True):
 
     if verbose:
         print("\nNumber of Patches: ", len(patch_dict))
+
+    return patch_dict
