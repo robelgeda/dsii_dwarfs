@@ -3,6 +3,7 @@ import numpy as np
 from scipy import stats
 from astropy.table import Table
 
+from . import DATA_PATH
 
 class IsochronePicker:
     """ 
@@ -15,7 +16,7 @@ class IsochronePicker:
     """
 
     def __init__(self,
-           isochrone_dir='data/MIST_v1.2_vvcrit0.4_HSC',
+           isochrone_dir=os.path.join(DATA_PATH, 'MIST_v1.2_vvcrit0.4_HSC'),
            isofilestring='MIST_v1.2_feh_%s%3.2f_afe_p0.0_vvcrit0.4_HSC.iso.cmd',
            noscatter=False):
 
