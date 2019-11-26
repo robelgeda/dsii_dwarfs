@@ -47,6 +47,6 @@ class AxialRatioPDF(rv_continuous):
 
 def sanchez_jansen():
     """ Data from  Sanchez-Janssen 2016, ApJ 820, 69 doi:10.3847/0004-637X/820/1/69 """
-    sj = os.join(DATA_PATH, 'sanchez-janssen_fig9.txt')
-    t = Table.read(sj, format='commented_header')
+    sj = os.path.join(DATA_PATH, 'sanchez-janssen_fig9.txt')
+    t = Table.read(sj, format='ascii.commented_header')
     return t
