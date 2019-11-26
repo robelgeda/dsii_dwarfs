@@ -7,7 +7,7 @@ since we would have to store password information
 """
 
 __all__ = ['get_s16a_deep_psf', 'get_s16a_udeep_psf', 'get_s16a_wide_psf',
-           'get_pdr2_deep_psf', 'get_pdr2_udeep_psf', 'get_pdr2_wide_psf']
+           'get_pdr2_deep_psf', 'get_pdr2_udeep_psf', 'get_pdr2_wide_psf',]
 
 
 def _get_psf(url, ra, dec, band, patch, output_path, username, password):
@@ -105,3 +105,14 @@ filename : str
 
 for func in __all__:
     locals()[func].__doc__ = master_docstring
+
+
+HSC_PSF_DOWNLOADERS = {
+    's16a_deep' : get_s16a_deep_psf,
+    's16a_udeep': get_s16a_udeep_psf,
+    's16a_wide' : get_s16a_wide_psf,
+
+    'pdr2_deep' : get_pdr2_deep_psf,
+    'pdr2_udeep': get_pdr2_udeep_psf,
+    'pdr2_wide' : get_pdr2_wide_psf
+}
