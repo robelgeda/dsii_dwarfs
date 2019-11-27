@@ -48,7 +48,8 @@ class HSCPatch:
         }
 
 
-def find_hsc_files(hsc_top_path, bands=None, verbose=True):
+def find_hsc_files(hsc_top_path, bands=None, verbose=True,
+                   wild_card="/**/calexp-HSC*fits*",):
     """
     This function takes the top level path and searches for
     HSC images. It will try to find and organize associated
@@ -57,7 +58,7 @@ def find_hsc_files(hsc_top_path, bands=None, verbose=True):
 
     Parameters
     ----------
-    hsc_top_path : string
+    hsc_top_path : str
         path to top level dir containing the patch images
 
     bands : list
@@ -66,6 +67,9 @@ def find_hsc_files(hsc_top_path, bands=None, verbose=True):
 
     verbose : bool
         Pint out info
+
+    wild_card : str
+        HSC file name wild card. Default "/**/calexp-HSC*"
 
     Returns
     -------
@@ -77,7 +81,7 @@ def find_hsc_files(hsc_top_path, bands=None, verbose=True):
 
     patch_dict = {}
 
-    fb = glob(hsc_top_path + "/**/calexp-HSC*.gz", recursive=True)  # Filebase
+    fb = glob(hsc_top_path + wild_card, recursive=True)  # Filebase
 
     for f in fb:
 
@@ -88,14 +92,37 @@ def find_hsc_files(hsc_top_path, bands=None, verbose=True):
             patch_dict[name] = HSCPatch(name)
         setattr(patch_dict[name], band.lower(), f)
 
+    errors = []
+    failed_patches = []
     for name in patch_dict:
+        fail = False
         for band in bands:
-            assert getattr(patch_dict[name], band) is not None, "error, patch {} is missing {} band".format(name, band)
+            # assert getattr(patch_dict[name], band) is not None, "error, patch {} is missing {} band".format(name, band)
+            if getattr(patch_dict[name], band) is None:
+                errors.append("Error, patch {} is missing {} band".format(name, band))
+                fail = True
+
+        if fail:
+            failed_patches.append(name)
 
         if verbose:
-            print("✓ {}".format(name))
+            if fail:
+                print("x {}".format(name))
+            else:
+                print("✓ {}".format(name))
+
+
+    for name in failed_patches:
+        del patch_dict[name]
 
     if verbose:
         print("\nNumber of Patches: ", len(patch_dict))
+
+        print("\n")
+        if errors:
+            print("Missing Files")
+            print("-------------")
+            for err in errors:
+                print(err)
 
     return patch_dict
