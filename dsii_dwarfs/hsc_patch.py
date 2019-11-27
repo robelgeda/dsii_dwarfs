@@ -48,7 +48,7 @@ class HSCPatch:
         }
 
 
-def find_hsc_files(hsc_top_path, verbose=True):
+def find_hsc_files(hsc_top_path, bands=None, verbose=True):
     """
     This function takes the top level path and searches for
     HSC images. It will try to find and organize associated
@@ -60,6 +60,10 @@ def find_hsc_files(hsc_top_path, verbose=True):
     hsc_top_path : string
         path to top level dir containing the patch images
 
+    bands : list
+        List of bands to look for.
+        Default is ['g', 'i', 'r', 'y', 'z']
+
     verbose : bool
         Pint out info
 
@@ -68,6 +72,8 @@ def find_hsc_files(hsc_top_path, verbose=True):
     patch_dict : dict
         A dict of patch objects with the patch names as keys
     """
+    if bands is None:
+        bands = ['g', 'i', 'r', 'y', 'z']
 
     patch_dict = {}
 
@@ -83,7 +89,7 @@ def find_hsc_files(hsc_top_path, verbose=True):
         setattr(patch_dict[name], band.lower(), f)
 
     for name in patch_dict:
-        for band in ['g', 'i', 'r', 'y', 'z']:
+        for band in bands:
             assert getattr(patch_dict[name], band) is not None, "error, patch {} is missing {} band".format(name, band)
 
         if verbose:
