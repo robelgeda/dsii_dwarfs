@@ -7,7 +7,7 @@ since we would have to store password information
 """
 
 __all__ = ['get_s16a_deep_psf', 'get_s16a_udeep_psf', 'get_s16a_wide_psf',
-           'get_pdr2_deep_psf', 'get_pdr2_udeep_psf', 'get_pdr2_wide_psf',]
+           'get_pdr2_udeep_psf', 'get_pdr2_wide_psf',]
 
 
 def _get_psf(url, ra, dec, band, patch, output_path, username, password):
@@ -59,15 +59,8 @@ def get_s16a_wide_psf(ra, dec, band, patch, output_path, username, password):
 ########
 """
 
-def get_pdr2_deep_psf(ra, dec, band, patch, output_path, username, password):
-    url = 'https://hsc-release.mtk.nao.ac.jp/psf/pdr2/cgi/getpsf?ra={:0.2f}&dec={:0.2f}&filter={}&rerun=pdr2_deep&tract={}&patch={}&type=coadd'.format(
-        ra, dec, band, patch.tract, patch.patch)
-
-    return _get_psf(url, ra, dec, band, patch, output_path, username, password)
-
-
 def get_pdr2_udeep_psf(ra, dec, band, patch, output_path, username, password):
-    url = 'https://hsc-release.mtk.nao.ac.jp/psf/pdr2/cgi/getpsf?ra={:0.2f}&dec={:0.2f}&filter={}&rerun=pdr2_udeep&tract={}&patch={}&type=coadd'.format(
+    url = 'https://hsc-release.mtk.nao.ac.jp/psf/pdr2/cgi/getpsf?ra={:0.2f}&dec={:0.2f}&filter={}&rerun=pdr2_dud&tract={}&patch={}&type=coadd'.format(
         ra, dec, band, patch.tract, patch.patch)
 
     return _get_psf(url, ra, dec, band, patch, output_path, username, password)
@@ -112,7 +105,6 @@ HSC_PSF_DOWNLOADERS = {
     's16a_udeep': get_s16a_udeep_psf,
     's16a_wide' : get_s16a_wide_psf,
 
-    'pdr2_deep' : get_pdr2_deep_psf,
     'pdr2_udeep': get_pdr2_udeep_psf,
     'pdr2_wide' : get_pdr2_wide_psf
 }
