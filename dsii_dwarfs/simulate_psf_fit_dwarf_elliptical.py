@@ -42,7 +42,7 @@ class SimulatePSFFitDwarfElliptical:
         Min and max distances for galaxy in Mpc
     arcsec_per_pixel : float
         Pixel scale of image
-    zpt : float
+    zpt :
         HSC zero points that convert from Mag to counts per second in the image.
     mf_alpha : float
         The slope of the powerlaw portion of the luminosity function (-1.3 default)
@@ -132,7 +132,7 @@ class SimulatePSFFitDwarfElliptical:
         self.age = None
         self.feh = None
         self.isofile = None
-        self.total_flux_single_band = None
+        self.flux_total_single_band = None
 
         self.redshift = None
         self.re_kpc = None
@@ -201,7 +201,7 @@ class SimulatePSFFitDwarfElliptical:
         b = self.bands[0]
         if "z" in self.bands:
             b = "z"
-        self.total_flux_single_band = self.mass * observed_cts_per_sec(self.smooth_flux[b],
+        self.flux_total_single_band = self.mass * observed_cts_per_sec(self.smooth_flux[b],
                                                                        self.distance,
                                                                        self.zpt[b])
 
@@ -264,7 +264,6 @@ class SimulatePSFFitDwarfElliptical:
             theta=self.position_angle)
 
         if self.auto_npix:
-            total_flux = self.total_flux_single_band
 
             noise_level = self.hsc_std # in the actual HSC image
             noise_level /= self.oversampling**2 # Down-sampled value
@@ -272,7 +271,7 @@ class SimulatePSFFitDwarfElliptical:
             max_pix = self.oversampling * self.max_allowed_npix // 2
 
             half_npix = self.model.compute_npix(noise_level,
-                                                total_flux,
+                                                self.flux_total_single_band,
                                                 max_pix=max_pix)
 
             npix = (half_npix * 2) // self.oversampling

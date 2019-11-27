@@ -116,3 +116,6 @@ HSC_PSF_DOWNLOADERS = {
     'pdr2_udeep': get_pdr2_udeep_psf,
     'pdr2_wide' : get_pdr2_wide_psf
 }
+
+__all__.append("HSC_PSF_DOWNLOADERS")
+
