@@ -118,7 +118,7 @@ class SimulatePSFFitDwarfElliptical:
 
         # Static Parameters
         # -----------------
-        self.isochrone_dir = os.path.join(DATA_PATH, 'MIST_v1.2_vvcrit0.4_HSC')
+        self.isochrone_dir = os.path.join(DATA_PATH, 'MIST_v1.2_vvcrit0.4', 'MIST_v1.2_vvcrit0.4_HSC')
         self.isofilestring ='MIST_v1.2_feh_%s%3.2f_afe_p0.0_vvcrit0.4_HSC.iso.cmd'
         self.hsc_std = 0.074147396  # Estimate of std of HSC image background (noise)
         self.max_allowed_npix = 1024 # Only used if npix is None
