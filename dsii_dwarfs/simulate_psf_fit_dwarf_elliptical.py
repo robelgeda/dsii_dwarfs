@@ -419,7 +419,7 @@ class SimulatePSFFitDwarfElliptical:
         # Convolve with them
         convolved_image = {}
         for b in self.bands:
-            convolved_image[b] = convolve_fft(self.galaxy_image[b], self.psf[b])
+            convolved_image[b] = convolve_fft(self.galaxy_image[b], self.psf[b], allow_huge=True)
 
 
         # Rebin to the HSC pixel scale
