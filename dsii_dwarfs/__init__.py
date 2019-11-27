@@ -29,4 +29,8 @@ if not _ASTROPY_SETUP_:   # noqa
     # For egg_info test builds to pass, put package imports here.
     pass
 
-DATA_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'data')
+
+try:
+    DATA_PATH = os.environ['DSII_DWARFS_DATA']
+except KeyError:
+    DATA_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'data')
