@@ -36,7 +36,9 @@ class AxialRatioPDF(rv_continuous):
         self.qfunc = interpolate.interp1d(self.qdist['q'],self.qdist['pdf'],kind='linear')
 
         qsamples = np.arange(0,1.01,0.01)
-        cdf_samples = np.array([integrate.quad(self._pdf,0,q)[0] for q in qsamples])
+        cdf_samples = np.array([integrate.quad(self._pdf, 0, q,
+                                               limit=6000, epsabs=1.e-4,
+                                               epsrel=1.e-4)[0] for q in qsamples])
         self.cfunc = interpolate.interp1d(qsamples,cdf_samples)
 
     def _pdf(self,q):
@@ -50,3 +52,5 @@ def sanchez_jansen():
     sj = os.path.join(DATA_PATH, 'sanchez-janssen_fig9.txt')
     t = Table.read(sj, format='ascii.commented_header')
     return t
+
+

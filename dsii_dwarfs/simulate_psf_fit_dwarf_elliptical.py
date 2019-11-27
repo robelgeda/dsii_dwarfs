@@ -34,21 +34,36 @@ class SimulatePSFFitDwarfElliptical:
 
     Parameters
     ----------
-    npix
-    oversampling
-    dmin
-    dmax
-    arcsec_per_pixel
-    zpt
-    mf_alpha
-    mf_mstar
-    mf_min
-    mf_max
-    noise_range
-    bands
-    auto_npix
-    noiseless_only
-    verbose
+    npix : int
+        Number of pixels for the resulting image
+    oversampling : int
+        Oversampling factor for internal computations
+    dmin, dmax : float
+        Min and max distances for galaxy in Mpc
+    arcsec_per_pixel : float
+        Pixel scale of image
+    zpt : float
+        HSC zero points that convert from Mag to counts per second in the image.
+    mf_alpha : float
+        The slope of the powerlaw portion of the luminosity function (-1.3 default)
+    mf_mstar : float
+        The mass of the break of the mass function (3.e10 solar masses defaut)
+    mf_min : float
+         The minimum mass (1.e5 default)
+    mf_max : float
+        The maximum mass
+    noise_range : tuple
+        Noise range
+    bands : list
+        List of filters to use. Default is ['g', 'r', 'i', 'z', 'y']
+    auto_npix : bool
+        If set true, npix may be adjusted (expanded) if the galaxy does not fit
+        into the initial npix value. The max size is set by the internal
+        class var max_allowed_npix
+    noiseless_only : bool
+        Only simulate noiseless galaxies.
+    verbose : bool
+        print information
     """
 
     def __init__(self,
@@ -117,6 +132,7 @@ class SimulatePSFFitDwarfElliptical:
         self.age = None
         self.feh = None
         self.isofile = None
+        self.total_flux_single_band = None
 
         self.redshift = None
         self.re_kpc = None
@@ -180,6 +196,14 @@ class SimulatePSFFitDwarfElliptical:
 
         self._setup_isochrone()
 
+        # Compute total flux for single band,
+        # Prefer z filter if possible
+        b = self.bands[0]
+        if "z" in self.bands:
+            b = "z"
+        self.total_flux_single_band = self.mass * observed_cts_per_sec(self.smooth_flux[b],
+                                                                       self.distance,
+                                                                       self.zpt[b])
 
         # Pick a size
         sp = SizePicker()  # Returns log10 of size in pc
@@ -240,11 +264,7 @@ class SimulatePSFFitDwarfElliptical:
             theta=self.position_angle)
 
         if self.auto_npix:
-            total_flux = self.mass * observed_cts_per_sec(self.smooth_flux["z"],
-                                                          self.distance,
-                                                          self.zpt["z"])
-
-            self.total_flux_temp = total_flux
+            total_flux = self.total_flux_single_band
 
             noise_level = self.hsc_std # in the actual HSC image
             noise_level /= self.oversampling**2 # Down-sampled value
@@ -370,7 +390,7 @@ class SimulatePSFFitDwarfElliptical:
             for band in self.bands:
                 psf_path = psf_downloader(**kwargs)
                 psf_fit = FitPSF(psf_path)
-                psf_fit.dofit()
+                psf_fit.dofit(verbose=self.verbose)
                 results.add_row([band, psf_fit.gamma, psf_fit.alpha, psf_fit.fwhm * 0.17])
 
             self.psf_gamma = {}
@@ -381,7 +401,7 @@ class SimulatePSFFitDwarfElliptical:
 
                 pf = HSCMoffatPSFPicker(oversampling=self.oversampling, gamma0=line['gamma'], alpha0=line['alpha'])
 
-                self.psf_gamma[b], self.psf_alpha[b], self.psf[b] = pf.get_oversampled_psf()
+                self.psf_gamma[b], self.psf_alpha[b], self.psf[b] = pf.get_oversampled_psf(verbose=self.verbose)
 
         else:
             # Pick PSFs
@@ -390,7 +410,7 @@ class SimulatePSFFitDwarfElliptical:
             self.psf = {}
             for b in self.bands:
                 pf = HSCMoffatPSFPicker(oversampling=self.oversampling)
-                self.psf_gamma[b], self.psf_alpha[b], self.psf[b] = pf.get_oversampled_psf()
+                self.psf_gamma[b], self.psf_alpha[b], self.psf[b] = pf.get_oversampled_psf(verbose=self.verbose)
 
         return self.psf
 
@@ -446,7 +466,7 @@ class SimulatePSFFitDwarfElliptical:
         filename_template += f"feh{self.feh:.1f}_age{self.age:.1f}"
 
         # Write out the noiseless image
-        noiseless_file = directory + "/" + filename_template + "_noiseless.fits"
+        noiseless_file = os.path.join(directory, filename_template + "_noiseless.fits")
         noiseless_cube = np.stack([self.noiseless_image[b] for b in self.bands], axis=0)
         hdu_noiseless = fits.PrimaryHDU(noiseless_cube)
         self._write_header_keywords(hdu_noiseless)
@@ -455,13 +475,17 @@ class SimulatePSFFitDwarfElliptical:
         # Write out the HSC noisy image
         if not self.noiseless_only and not noiseless_only:
 
-            hsc_file = directory + "/" + filename_template + "_HSC.fits"
+            hsc_file = os.path.join(directory, filename_template + "_HSC.fits")
             hsc_cube = np.stack([self.hsc_image[b] for b in self.bands], axis=0)
             hdu_hsc = fits.PrimaryHDU(hsc_cube)
             self._write_header_keywords(hdu_hsc)
             for b in self.bands:
                 hdu_hsc.header[f'noise_{b}'] = self.noise_sigma[b]
             hdu_hsc.writeto(hsc_file)
+
+            return [noiseless_file, hsc_file]
+
+        return [noiseless_file]
 
     def run_all_steps(self, output_directory=None, save_noiseless_only=False):
 
@@ -481,10 +505,6 @@ class SimulatePSFFitDwarfElliptical:
                 print(step.__name__)
 
             step()
-
-            if self.verbose:
-                print("\n")
-
 
         if output_directory:
             self.save_fits(output_directory, save_noiseless_only)

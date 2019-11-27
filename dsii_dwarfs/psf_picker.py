@@ -66,10 +66,11 @@ class HSCMoffatPSFPicker:
             fwhm += [m2d.fwhm/self.oversampling]
         return np.array(fwhm)
 
-    def get_oversampled_psf(self):
+    def get_oversampled_psf(self, verbose=True):
         gamma = self.gamma(size=1)[0]
         alpha = self.alpha
-        print(self.x0,self.y0,gamma,alpha)
+        if verbose:
+            print(self.x0,self.y0,gamma,alpha)
         m2d = models.Moffat2D(x_0=self.x0,y_0=self.y0,gamma=gamma,alpha=alpha)
         psf = m2d(self.x,self.y) 
         return gamma,alpha,psf
