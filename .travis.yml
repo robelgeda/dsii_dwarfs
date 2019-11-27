@@ -149,7 +149,7 @@ install:
 
 before_script:
     # Get data files
-    - wget https://stsci.box.com/s/18l1syy5vzn5svdb9afkgomunjuucc68 -O $TRAVIS_BUILD_DIR/dsii_dwarfs/data/MIST_v1.2_vvcrit0.4.tar.gz
+    - wget https://stsci.box.com/shared/static/18l1syy5vzn5svdb9afkgomunjuucc68.gz -O $TRAVIS_BUILD_DIR/dsii_dwarfs/data/MIST_v1.2_vvcrit0.4.tar.gz
     - tar -xzvf $TRAVIS_BUILD_DIR/dsii_dwarfs/data/MIST_v1.2_vvcrit0.4.tar.gz
     - export DSII_DWARFS_DATA=$TRAVIS_BUILD_DIR/dsii_dwarfs/data
 
