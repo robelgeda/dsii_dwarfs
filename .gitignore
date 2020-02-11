@@ -58,3 +58,8 @@ distribute-*.tar.gz
 
 # Mac OSX
 .DS_Store
+
+# Data
+*MIST_v1.2_vvcrit0.4_HSC*
+*MIST_v1.2_vvcrit0.4_LSST*
+src

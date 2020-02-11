@@ -1,6 +1,6 @@
 import numpy as np
 
-def schechter_picker(N, alpha=-1.3, M_star=3.e10, M_min=1.e5):
+def schechter_picker(N,alpha=-1.3, M_star=3.e10, M_min=1.e5):
     """
     Draw masses at random from a Schechter (1976) function
     N(M) ~ (M/M*)**alpha * exp(M/M*)   
