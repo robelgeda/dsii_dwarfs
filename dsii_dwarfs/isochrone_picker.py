@@ -7,10 +7,11 @@ from . import DATA_PATH
 
 class IsochronePicker:
     """ 
-    Draw metallicities at random from the Kirby+13 Mass-Metallicity relation
-    Draw ages at random from a t distribution with 5 degrees of freedom 
     Choose the isochrone that is the closest match in age and metallicity
     Return the rows that correspond to the selected age.
+    Optionally:
+    Draw metallicities at random from the Kirby+13 Mass-Metallicity relation
+    Draw ages at random from a t distribution with 5 degrees of freedom 
     
     See validation in Isochrone_picker.ipynb
     """
@@ -18,13 +19,16 @@ class IsochronePicker:
     def __init__(self,
            isochrone_dir=os.path.join(DATA_PATH, 'MIST_v1.2_vvcrit0.4', 'MIST_v1.2_vvcrit0.4_HSC'),
            isofilestring='MIST_v1.2_feh_%s%3.2f_afe_p0.0_vvcrit0.4_HSC.iso.cmd',
+           mean_age=11., age_sigma=2., # Gyr
            noscatter=False):
+
+        # For making grids, remove the scatter in the mean relations of mass-metallicity and age
+        self.noscatter=noscatter
 
         # Mass-metallicity relation from Kirby et al. 2013 (2013 ApJ 779 102)
         self.c0 = -1.69
         self.c1 = 0.30
         self.sigma = 0.1
-        self.noscatter=noscatter
 
         # MIST isochrones
         self.metallicities = np.array(
@@ -38,8 +42,8 @@ class IsochronePicker:
         self.Zscatter = stats.t(loc=0,scale=self.sigma,df=5)
 
         # Ages just assume t distribution with a mean & scatter
-        self.meanage = 11.
-        self.agesigma = 2.
+        self.meanage = mean_age
+        self.agesigma = age_sigma
         self.agescatter = stats.norm(loc=self.meanage,scale=self.agesigma)
 
         self.age = None
@@ -53,23 +57,18 @@ class IsochronePicker:
             feh = self.c1*(logmass-6)+self.c0 + self.Zscatter.rvs(len(logmass))
         return feh
             
-    def pick_age(self, logmass):
-        MAXAGE = 15 # Gyr
-        DEFAULT_AGE = 13 # Gyr
+    def pick_age(self, age_gyr = 13, max_age_gyr = 15):
         if self.noscatter:
-            ages = []
-            for lm in logmass:
-                age = MAXAGE
-                while age >= MAXAGE:
-                    age = self.agescatter.rvs(1)[0] # Gyr
-                ages += [age]
+            age = age_gyr
         else:
-            ages = DEFAULT_AGE*np.ones(logmass.shape)
-        return np.array(ages)*1.e9 
+            age = max_age_gyr
+            while age >= max_age_gyr:
+                age = self.agescatter.rvs(1)[0] # Gyr
+        return 1.e9*age # Return age in years
 
     def pick_isofile(self, logmass, return_table=False):
-        random_metallicity = self.pick_metallicity(np.array([logmass]))[0] # get back a float
-        i = np.array(np.abs(random_metallicity-self.metallicities)).argmin()
+        metallicity = self.pick_metallicity(np.array([logmass]))[0] # get back a float
+        i = np.array(np.abs(metallicity-self.metallicities)).argmin()
 
         feh = self.metallicities[i]
 
@@ -86,9 +85,9 @@ class IsochronePicker:
         else:
             return self.isofile
 
-    def agerows(self, logmass, isotable):
-        random_age = self.pick_age(np.array([logmass]))[0]
-        logage = np.log10(random_age)
+    def agerows(self, isotable, age_gyr=13.):
+        age = self.pick_age(age_gyr=age_gyr)
+        logage = np.log10(age)
         i = np.array(np.abs(logage-isotable['log10_isochrone_age_yr'])).argmin()
         selected_age = isotable['log10_isochrone_age_yr'][i]
         tt = isotable[np.isclose(isotable['log10_isochrone_age_yr'],selected_age)]

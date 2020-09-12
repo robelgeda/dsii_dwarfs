@@ -70,7 +70,7 @@ class HSCMoffatPSFPicker:
         gamma = self.gamma(size=1)[0]
         alpha = self.alpha
         if verbose:
-            print(self.x0,self.y0,gamma,alpha)
+            print("PSF x0,y0,gamma,alpha = ",self.x0,self.y0,gamma,alpha)
         m2d = models.Moffat2D(x_0=self.x0,y_0=self.y0,gamma=gamma,alpha=alpha)
         psf = m2d(self.x,self.y) 
         return gamma,alpha,psf
