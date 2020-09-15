@@ -6,6 +6,5 @@ def test_hsc_dwarf(*args, **kwargs):
 
 
 def test_wfi_dwarf(*args, **kwargs):
-    pass
     wfi_sim = WFIDwarf()
     wfi_sim.run_all_steps()
