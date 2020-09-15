@@ -13,6 +13,8 @@ from astropy.convolution import convolve_fft
 from astropy.io import fits
 from astropy.table import Table
 
+from webbpsf import WFI
+
 import imf  # https://github.com/keflavich/imf
 
 from . import DATA_PATH
@@ -28,9 +30,48 @@ from .noise_picker import NoisePicker
 from .psf_picker import HSCMoffatPSFPicker
 
 
-class SimulatePSFFitDwarfElliptical:
+def observed_cts_per_sec(isochrone_flux, lumdist, zpt=27.0):
+    zptflux = 10. ** (zpt / 2.5)
+    distratio = lumdist * 1.e6 / 10.  # lumdist is in Mpc, isochrone is computed for 10 parsecs
+    return isochrone_flux * zptflux / distratio ** 2
+
+
+def rebin(a, *args):
     """
-    Simulates an elliptical dwarf using the PSFs from the HSC
+    rebin ndarray data into a smaller ndarray of the same rank whose dimensions
+    are factors of the original dimensions. eg. An array with 6 columns and 4 rows
+    can be reduced to have 6,3,2 or 1 columns and 4,2 or 1 rows.
+    example usages:
+     a=rand(6,4); b=rebin(a,3,2)
+     a=rand(6); b=rebin(a,2)
+    """
+    shape = a.shape
+    lenShape = len(shape)
+
+    factor = (np.asarray(shape) / np.asarray(args)).astype('int64')
+
+    evList = ['a.reshape('] + \
+             ['args[%d],factor[%d],' % (i, i) for i in range(lenShape)] + \
+             [')'] + ['.sum(%d)' % (i + 1) for i in range(lenShape)]
+
+    return eval(''.join(evList))
+
+
+def find_nearest(array, value):
+    idx = np.searchsorted(array, value, side="left")
+    if idx > 0 and (idx == len(array) or np.abs(value - array[idx - 1]) < np.abs(value - array[idx])):
+        return idx - 1
+    else:
+        return idx
+
+
+def do_find_nearest(array, vals):
+    return np.array([find_nearest(array, v) for v in vals])
+
+
+class _SimulateDwarfEllipticalBase:
+    """
+    Base class for simulating an elliptical dwarfs
 
     Parameters
     ----------
@@ -43,7 +84,7 @@ class SimulatePSFFitDwarfElliptical:
     arcsec_per_pixel : float
         Pixel scale of image
     zpt :
-        HSC zero points that convert from Mag to counts per second in the image.
+        Instrument zero points that convert from Mag to counts per second in the image.
     mf_alpha : float
         The slope of the powerlaw portion of the luminosity function (-1.3 default)
     mf_mstar : float
@@ -66,6 +107,8 @@ class SimulatePSFFitDwarfElliptical:
         print information
     """
 
+    instrument_name = None
+
     def __init__(self,
                  npix=256,
                  oversampling=5.,
@@ -84,7 +127,7 @@ class SimulatePSFFitDwarfElliptical:
                  verbose=True):
 
         if bands is None:
-            bands = ['g', 'r', 'i', 'z', 'y']
+            raise Exception("bands were not defined")
 
         # Input Parameters
         # ----------------
@@ -116,12 +159,18 @@ class SimulatePSFFitDwarfElliptical:
 
         self.verbose = verbose
 
+        # Class attribute Parameters
+        # ---------------------------
+        self.preferred_band = None
+
         # Static Parameters
         # -----------------
-        self.isochrone_dir = os.path.join(DATA_PATH, 'MIST_v1.2_vvcrit0.4', 'MIST_v1.2_vvcrit0.4_HSC')
-        self.isofilestring ='MIST_v1.2_feh_%s%3.2f_afe_p0.0_vvcrit0.4_HSC.iso.cmd'
-        self.hsc_std = 0.02 * 2 # Estimate of std of HSC image background (noise)
-        self.max_allowed_npix = 1024 # Only used if npix is None
+        # These should be redefined in the subclass __init__
+        self.isochrone_dir = None
+        self.isofilestring = None
+        self.isochrone_column_formatter = None  # String formatter for isochrone table where the band is input
+        self.inst_std = None  # Estimate of std of instrument image background (noise)
+        self.max_allowed_npix = 1024  # Only used if npix is None
 
         # Computed Variables
         # ------------------
@@ -140,7 +189,7 @@ class SimulatePSFFitDwarfElliptical:
         self.re_pixels = None
         self.ellipticity = None
         self.sersic_index = None
-        self.position_angle = None # radians
+        self.position_angle = None  # radians
 
         self.imf = None
         self.stochastic_mass_fraction = None
@@ -153,7 +202,7 @@ class SimulatePSFFitDwarfElliptical:
         self.galaxy_image = None
         self.stochastic_image = None
         self.noiseless_image = None
-        self.hsc_image = None
+        self.instrument_image = None
 
         self.x = None
         self.y = None
@@ -162,22 +211,20 @@ class SimulatePSFFitDwarfElliptical:
         self.observed_smooth_flux = None
         self.peak_smooth_flux = None
 
-        self.psf_gamma = None
-        self.psf_alpha = None
-        self.psf = None
+        self.psf = {}  # PSF image for each band
 
         self.nonzero_pm_indices = None
 
         self.noise_sigma = None
 
-
     def pick_galaxy(self):
-        # Pick a distance
+        # Pick a Distance
+        # ---------------
         dp = DistancePicker(dmin=self.dmin, dmax=self.dmax)
         self.distance = dp.pick_distance()
 
-
-        # Pick a mass
+        # Pick a Mass
+        # -----------
         # take a mass < 1.e9
         self.mass = self.mf_max
 
@@ -185,7 +232,8 @@ class SimulatePSFFitDwarfElliptical:
             self.mass = schechter_picker(1, self.mf_alpha, self.mf_mstar, self.mf_min)[0]
         self.log_mass = np.log10(self.mass)
 
-
+        # Pick Isochrone
+        # ---------------
         # Pick an isochrone given a mass, and compute flux at 10 pc in each band
         mp = IsochronePicker(self.isochrone_dir, self.isofilestring)
         t = mp.pick_isofile(self.log_mass, return_table=True)
@@ -196,11 +244,14 @@ class SimulatePSFFitDwarfElliptical:
 
         self._setup_isochrone()
 
+        # Total Flux
+        # ----------
         # Compute total flux for single band,
         # Prefer z filter if possible
         b = self.bands[0]
-        if "z" in self.bands:
-            b = "z"
+        if self.preferred_band is not None:
+            b = self.preferred_band
+
         self.flux_total_single_band = self.mass * observed_cts_per_sec(self.smooth_flux[b],
                                                                        self.distance,
                                                                        self.zpt[b])
@@ -209,11 +260,9 @@ class SimulatePSFFitDwarfElliptical:
         sp = SizePicker()  # Returns log10 of size in pc
         self.re_kpc = 10. ** (sp.size(np.array([self.log_mass]))[0]) / 1.e3  # convert to kpc
 
-
         # Pick an axial ratio
         qpdf = AxialRatioPDF(name='qpdf')
         self.ellipticity = 1. - qpdf.rvs(size=1)[0]
-
 
         # Set up the galaxy mass model
         self._setup_galaxy()
@@ -223,7 +272,7 @@ class SimulatePSFFitDwarfElliptical:
         isochrone = self.isochrone
 
         for b in self.bands:
-            isochrone[b + 'flux'] = 10 ** (isochrone['hsc_' + b] / -2.5)
+            isochrone[b + 'flux'] = 10 ** (isochrone[self.isochrone_column_formatter.format(b)] / -2.5)
 
         # Select a minimum mass for the stochastic component
         self.minmass_stochastic = min(1.0, isochrone['initial_mass'][isochrone['phase'] < 0.1][-1])
@@ -269,8 +318,8 @@ class SimulatePSFFitDwarfElliptical:
 
         if self.auto_npix:
 
-            noise_level = self.hsc_std # in the actual HSC image
-            noise_level /= self.oversampling**2 # Down-sampled value
+            noise_level = self.inst_std  # in the actual instrument image
+            noise_level /= self.oversampling ** 2  # Down-sampled value
 
             max_pix = self.oversampling * self.max_allowed_npix // 2
 
@@ -281,7 +330,7 @@ class SimulatePSFFitDwarfElliptical:
             npix = (half_npix * 2) // self.oversampling
 
             if npix % 2 == 1:
-                npix += 1 # make npix even number
+                npix += 1  # make npix even number
 
             if npix > self.npix:
                 print("auto_npix resize {}->{}".format(self.npix, npix))
@@ -329,7 +378,7 @@ class SimulatePSFFitDwarfElliptical:
 
         catalog_extra = 1.1  # Draw about 1.1 times as many stars as we need to allow the model
 
-        #cluster = imf.make_cluster(self.stochastic_mass_fraction * self.mass * catalog_extra,
+        # cluster = imf.make_cluster(self.stochastic_mass_fraction * self.mass * catalog_extra,
         #                           massfunc='kroupa', mmin=self.minmass_stochastic)
 
         cluster = imf.make_cluster(self.stochastic_mass_fraction * self.mass * catalog_extra,
@@ -381,8 +430,214 @@ class SimulatePSFFitDwarfElliptical:
         self.poisson_model = stats.poisson.rvs(mu, size=self.model_image.shape)
 
     def sum_components(self):
+        if self.stochastic_image is not None:
+            for b in self.bands:
+                self.galaxy_image[b] += self.stochastic_image[b]
+
+    def create_psf(self, **kwargs):
+        """
+        This should set the self.psf attribute which is a dictionary with a PSF image for each band.
+        It should also return the self.psf dictionary
+        """
+        # raise NotImplementedError("create_psf needs to be overridden by inheriting subclass")
+        return self.psf
+
+    def simulate_image(self):
+        """ Pick a PSF for each band, convolve, downsample, and add noise """
+
+        # Convolve with them
+        convolved_image = {}
         for b in self.bands:
-            self.galaxy_image[b] += self.stochastic_image[b]
+            if b in self.psf.keys():
+                convolved_image[b] = convolve_fft(self.galaxy_image[b], self.psf[b], allow_huge=True)
+            else:
+                # No PSF
+                convolved_image[b] = self.galaxy_image[b]
+
+        # Rebin to the instrument pixel scale
+        self.noiseless_image = {}
+        nbinnedpix = int(self.npix_oversampled / self.oversampling)
+        for b in self.bands:
+            self.noiseless_image[b] = rebin(convolved_image[b], nbinnedpix, nbinnedpix)
+
+        if not self.noiseless_only:
+            # Pick noise and add it to the rebinned image
+            self.instrument_image = {}
+            npick = NoisePicker(sigma_range=(0.015, 0.04))
+            self.noise_sigma = {}
+            for b in self.bands:
+                self.instrument_image[b] = self.noiseless_image[b] + \
+                                           npick.pick_noise(size=self.noiseless_image[b].shape)
+                self.noise_sigma[b] = npick.sigma
+
+    def _write_header_keywords(self, hdu):
+        h = hdu.header
+        h['logmass'] = self.log_mass
+        h['distance'] = (self.distance, 'Mpc')
+        h['rekpc'] = self.re_kpc
+        h['rearcsec'] = self.re_arcsec
+        h['FeH'] = self.feh
+        h['age'] = (self.age, 'Gyr')
+        h['ellip'] = (self.ellipticity, "ellipticity")
+        h['pa'] = (self.position_angle, "radians")
+        h['scale'] = (self.arcsec_per_pixel, "Arcsec/pixel")
+        h['oversamp'] = (self.npix_oversampled, "Original oversampling")
+        h['isofile'] = (os.path.basename(self.isofile), "Isochrone file")
+        for b in self.bands:
+            h[f'gamma_{b}'] = self.psf_gamma[b]
+        for b in self.bands:
+            h[f'alpha_{b}'] = self.psf_alpha[b]
+        for b in self.bands:
+            h[f'zpt_{b}'] = self.zpt[b]
+
+    def save_fits(self, directory, noiseless_only=False):
+
+        filename_template = f"d{self.distance:.2f}_"
+        filename_template += f"m{self.log_mass:.2f}_re{self.re_kpc:.2f}_"
+        filename_template += f"feh{self.feh:.1f}_age{self.age:.1f}"
+
+        # Write out the noiseless image
+        noiseless_file = os.path.join(directory, filename_template + "_noiseless.fits")
+        noiseless_cube = np.stack([self.noiseless_image[b] for b in self.bands], axis=0)
+        hdu_noiseless = fits.PrimaryHDU(noiseless_cube)
+        self._write_header_keywords(hdu_noiseless)
+        hdu_noiseless.writeto(noiseless_file)
+
+        # Write out the noisy image
+        if not self.noiseless_only and not noiseless_only:
+
+            output_file = os.path.join(directory, filename_template + "{}.fits".format(self.instrument_name))
+            output_cube = np.stack([self.instrument_image[b] for b in self.bands], axis=0)
+            output_hdu = fits.PrimaryHDU(output_cube)
+            self._write_header_keywords(output_hdu)
+            for b in self.bands:
+                output_hdu.header[f'noise_{b}'] = self.noise_sigma[b]
+            output_hdu.writeto(output_file)
+
+            return [noiseless_file, output_file]
+
+        return [noiseless_file]
+
+    def run_all_steps(self, output_directory=None, save_noiseless_only=False):
+
+        steps = [
+            self.pick_galaxy,
+            self.renormalize_isochrone,
+            self.compute_smooth_flux,
+            self.create_smooth_portion,
+            self.create_stochastic_portion,
+            self.sum_components,
+            self.create_psf,
+            self.simulate_image
+        ]
+
+        for step in steps:
+            if self.verbose:
+                print(step.__name__)
+
+            step()
+
+        if output_directory:
+            self.save_fits(output_directory, save_noiseless_only)
+
+# ===
+# HSC
+# ===
+
+class HSCDwarf(_SimulateDwarfEllipticalBase):
+    """
+    Simulates an elliptical dwarf using the PSFs from the HSC
+
+    Parameters
+    ----------
+    npix : int
+        Number of pixels for the resulting image
+    oversampling : int
+        Oversampling factor for internal computations
+    dmin, dmax : float
+        Min and max distances for galaxy in Mpc
+    arcsec_per_pixel : float
+        Pixel scale of image
+    zpt :
+        HSC zero points that convert from Mag to counts per second in the image.
+    mf_alpha : float
+        The slope of the powerlaw portion of the luminosity function (-1.3 default)
+    mf_mstar : float
+        The mass of the break of the mass function (3.e10 solar masses defaut)
+    mf_min : float
+         The minimum mass (1.e5 default)
+    mf_max : float
+        The maximum mass
+    noise_range : tuple
+        Noise range
+    bands : list
+        List of filters to use. Default is ['g', 'r', 'i', 'z', 'y']
+    auto_npix : bool
+        If set true, npix may be adjusted (expanded) if the galaxy does not fit
+        into the initial npix value. The max size is set by the internal
+        class var max_allowed_npix
+    noiseless_only : bool
+        Only simulate noiseless galaxies.
+    verbose : bool
+        print information
+    """
+
+    instrument_name = "HSC"
+
+    def __init__(self,
+                 npix=256,
+                 oversampling=5.,
+                 dmin=1.,
+                 dmax=10.,
+                 arcsec_per_pixel=0.168,
+                 zpt=27.,
+                 mf_alpha=-1.3,
+                 mf_mstar=3.e10,
+                 mf_min=1.e5,
+                 mf_max=1.e9,
+                 noise_range=(0.015, 0.04),
+                 bands=None,
+                 auto_npix=False,
+                 noiseless_only=False,
+                 verbose=True):
+
+        if bands is None:
+            bands = ['g', 'r', 'i', 'z', 'y']
+
+        super().__init__(
+            npix=npix,
+            oversampling=oversampling,
+            dmin=dmin,
+            dmax=dmax,
+            arcsec_per_pixel=arcsec_per_pixel,
+            zpt=zpt,
+            mf_alpha=mf_alpha,
+            mf_mstar=mf_mstar,
+            mf_min=mf_min,
+            mf_max=mf_max,
+            noise_range=noise_range,
+            bands=bands,
+            auto_npix=auto_npix,
+            noiseless_only=noiseless_only,
+            verbose=verbose
+        )
+
+        # Static Parameters
+        # -----------------
+        self.isochrone_dir = os.path.join(DATA_PATH, 'MIST_v1.2_vvcrit0.4', 'MIST_v1.2_vvcrit0.4_HSC')
+        self.isofilestring = 'MIST_v1.2_feh_%s%3.2f_afe_p0.0_vvcrit0.4_HSC.iso.cmd'
+        self.isochrone_column_formatter = 'hsc_{}'
+        self.inst_std = 0.02 * 2  # Estimate of std of HSC image background (noise)
+        self.max_allowed_npix = 1024  # Only used if npix is None
+
+        # Other Settings
+        # --------------
+        self.preferred_band = 'z'
+
+        # Computed Variables
+        # ------------------
+        self.psf_gamma = None
+        self.psf_alpha = None
 
     def create_psf(self, psf_type=None, **kwargs):
 
@@ -420,148 +675,133 @@ class SimulatePSFFitDwarfElliptical:
 
         return self.psf
 
-    def simulate_hsc_image(self):
-        """ Pick a PSF for each band, convolve, downsample, and add noise """
-
-        # Convolve with them
-        convolved_image = {}
-        for b in self.bands:
-            convolved_image[b] = convolve_fft(self.galaxy_image[b], self.psf[b], allow_huge=True)
-
-
-        # Rebin to the HSC pixel scale
-        self.noiseless_image = {}
-        nbinnedpix = int(self.npix_oversampled / self.oversampling)
-        for b in self.bands:
-            self.noiseless_image[b] = rebin(convolved_image[b], nbinnedpix, nbinnedpix)
-
-        if not self.noiseless_only:
-            # Pick noise and add it to the rebinned image
-            self.hsc_image = {}
-            npick = NoisePicker(sigma_range=(0.015, 0.04))
-            self.noise_sigma = {}
-            for b in self.bands:
-                self.hsc_image[b] = self.noiseless_image[b] + \
-                                   npick.pick_noise(size=self.noiseless_image[b].shape)
-                self.noise_sigma[b] = npick.sigma
-
-    def _write_header_keywords(self, hdu):
-        h = hdu.header
-        h['logmass'] = self.log_mass
-        h['distance'] = (self.distance, 'Mpc')
-        h['rekpc'] = self.re_kpc
-        h['rearcsec'] = self.re_arcsec
-        h['FeH'] = self.feh
-        h['age'] = (self.age, 'Gyr')
-        h['ellip'] = (self.ellipticity, "ellipticity")
-        h['pa'] = (self.position_angle, "radians")
-        h['scale'] = (self.arcsec_per_pixel, "Arcsec/pixel")
-        h['oversamp'] = (self.npix_oversampled, "Original oversampling")
-        h['isofile'] = (os.path.basename(self.isofile), "Isochrone file")
-        for b in self.bands:
-            h[f'gamma_{b}'] = self.psf_gamma[b]
-        for b in self.bands:
-            h[f'alpha_{b}'] = self.psf_alpha[b]
-        for b in self.bands:
-            h[f'zpt_{b}'] = self.zpt[b]
-
-    def save_fits(self, directory, noiseless_only=False):
-
-        filename_template = f"d{self.distance:.2f}_"
-        filename_template += f"m{self.log_mass:.2f}_re{self.re_kpc:.2f}_"
-        filename_template += f"feh{self.feh:.1f}_age{self.age:.1f}"
-
-        # Write out the noiseless image
-        noiseless_file = os.path.join(directory, filename_template + "_noiseless.fits")
-        noiseless_cube = np.stack([self.noiseless_image[b] for b in self.bands], axis=0)
-        hdu_noiseless = fits.PrimaryHDU(noiseless_cube)
-        self._write_header_keywords(hdu_noiseless)
-        hdu_noiseless.writeto(noiseless_file)
-
-        # Write out the HSC noisy image
-        if not self.noiseless_only and not noiseless_only:
-
-            hsc_file = os.path.join(directory, filename_template + "_HSC.fits")
-            hsc_cube = np.stack([self.hsc_image[b] for b in self.bands], axis=0)
-            hdu_hsc = fits.PrimaryHDU(hsc_cube)
-            self._write_header_keywords(hdu_hsc)
-            for b in self.bands:
-                hdu_hsc.header[f'noise_{b}'] = self.noise_sigma[b]
-            hdu_hsc.writeto(hsc_file)
-
-            return [noiseless_file, hsc_file]
-
-        return [noiseless_file]
-
-    def run_all_steps(self, output_directory=None, save_noiseless_only=False):
-
-        steps = [
-            self.pick_galaxy,
-            self.renormalize_isochrone,
-            self.compute_smooth_flux,
-            self.create_smooth_portion,
-            self.create_stochastic_portion,
-            self.sum_components,
-            self.create_psf,
-            self.simulate_hsc_image
-        ]
-
-        for step in steps:
-            if self.verbose:
-                print(step.__name__)
-
-            step()
-
-        if output_directory:
-            self.save_fits(output_directory, save_noiseless_only)
-
-
-def observed_cts_per_sec(isochrone_flux, lumdist, zpt=27.0):
-    zptflux = 10. ** (zpt / 2.5)
-    distratio = lumdist * 1.e6 / 10.  # lumdist is in Mpc, isochrone is computed for 10 parsecs
-    return isochrone_flux * zptflux / distratio ** 2
-
-
-def rebin(a, *args):
-    """
-    rebin ndarray data into a smaller ndarray of the same rank whose dimensions
-    are factors of the original dimensions. eg. An array with 6 columns and 4 rows
-    can be reduced to have 6,3,2 or 1 columns and 4,2 or 1 rows.
-    example usages:
-     a=rand(6,4); b=rebin(a,3,2)
-     a=rand(6); b=rebin(a,2)
-    """
-    shape = a.shape
-    lenShape = len(shape)
-
-    factor = (np.asarray(shape) / np.asarray(args)).astype('int64')
-
-    evList = ['a.reshape('] + \
-             ['args[%d],factor[%d],' % (i, i) for i in range(lenShape)] + \
-             [')'] + ['.sum(%d)' % (i + 1) for i in range(lenShape)]
-
-    return eval(''.join(evList))
-
-
-def find_nearest(array, value):
-    idx = np.searchsorted(array, value, side="left")
-    if idx > 0 and (idx == len(array) or np.abs(value - array[idx - 1]) < np.abs(value - array[idx])):
-        return idx - 1
-    else:
-        return idx
-
-
-def do_find_nearest(array, vals):
-    return np.array([find_nearest(array, v) for v in vals])
-
-
 def simulate_hsc():
-    sim = SimulatePSFFitDwarfElliptical()
+    sim = HSCDwarf()
     sim.pick_galaxy()
     sim.renormalize_isochrone()
     sim.compute_smooth_flux()
     sim.create_smooth_portion()
     sim.create_stochastic_portion()
     sim.sum_components()
-    sim.simulate_hsc_image()
+    sim.simulate_image()
     return sim
+
+
+# ===
+# WFI
+# ===
+
+class WFIDwarf(_SimulateDwarfEllipticalBase):
+    """
+    Simulates an elliptical dwarf using the PSFs from the WFI on Roman S.T.
+
+    Parameters
+    ----------
+    npix : int
+        Number of pixels for the resulting image
+    oversampling : int
+        Oversampling factor for internal computations
+    dmin, dmax : float
+        Min and max distances for galaxy in Mpc
+    arcsec_per_pixel : float
+        Pixel scale of image
+    zpt :
+        WFI zero points that convert from Mag to counts per second in the image.
+    mf_alpha : float
+        The slope of the powerlaw portion of the luminosity function (-1.3 default)
+    mf_mstar : float
+        The mass of the break of the mass function (3.e10 solar masses defaut)
+    mf_min : float
+         The minimum mass (1.e5 default)
+    mf_max : float
+        The maximum mass
+    noise_range : tuple
+        Noise range
+    bands : list
+        List of filters to use. Default is ['R062', 'Z087', 'Y106', 'J129', 'W146', 'H158', 'F184']
+    auto_npix : bool
+        If set true, npix may be adjusted (expanded) if the galaxy does not fit
+        into the initial npix value. The max size is set by the internal
+        class var max_allowed_npix
+    noiseless_only : bool
+        Only simulate noiseless galaxies.
+    verbose : bool
+        print information
+    """
+
+    instrument_name = "WFI"
+
+    def __init__(self,
+                 npix=256,
+                 oversampling=5.,
+                 dmin=1.,
+                 dmax=10.,
+                 arcsec_per_pixel=0.168,
+                 zpt=27.,
+                 mf_alpha=-1.3,
+                 mf_mstar=3.e10,
+                 mf_min=1.e5,
+                 mf_max=1.e9,
+                 noise_range=(0.015, 0.04),
+                 bands=None,
+                 auto_npix=False,
+                 noiseless_only=False,
+                 verbose=True):
+
+        if bands is None:
+            bands = ['R062', 'Z087', 'Y106', 'J129', 'W146', 'H158', 'F184']
+
+        super().__init__(
+            npix=npix,
+            oversampling=oversampling,
+            dmin=dmin,
+            dmax=dmax,
+            arcsec_per_pixel=arcsec_per_pixel,
+            zpt=zpt,
+            mf_alpha=mf_alpha,
+            mf_mstar=mf_mstar,
+            mf_min=mf_min,
+            mf_max=mf_max,
+            noise_range=noise_range,
+            bands=bands,
+            auto_npix=auto_npix,
+            noiseless_only=noiseless_only,
+            verbose=verbose
+        )
+
+        # Static Parameters
+        # -----------------
+        self.isochrone_dir = os.path.join(DATA_PATH, 'MIST_v1.2_vvcrit0.4_WFIRST')
+        self.isofilestring = 'MIST_v1.2_feh_%s%3.2f_afe_p0.0_vvcrit0.4_WFIRST.iso.cmd'
+        self.isochrone_column_formatter = '{}'
+        self.inst_std = 0.053649535982253485 # Estimate of std of WFI image background (noise)
+        self.max_allowed_npix = 1024  # Only used if npix is None
+
+        # Other Settings
+        # --------------
+        self.preferred_band = 'Y106'
+
+
+    def create_psf(self, **kwargs):
+
+        for b in self.bands:
+            wfi = WFI()
+            wfi.filter = b.replace(b[0], 'F')
+            psf_hdul = wfi.calc_psf(oversample=int(self.oversampling))
+            self.psf[b] = psf_hdul[0].data
+
+        return self.psf
+
+
+def simulate_wfi():
+    sim = WFIDwarf()
+    sim.pick_galaxy()
+    sim.renormalize_isochrone()
+    sim.compute_smooth_flux()
+    sim.create_smooth_portion()
+    sim.create_stochastic_portion()
+    sim.sum_components()
+    sim.simulate_image()
+    return sim
+
+
