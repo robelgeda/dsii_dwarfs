@@ -1,0 +1,6 @@
+Create_grid_of_stamps_looping_over_mass.sh
+Create_grid_of_stamps_looping_over_distance.py
+make_galaxies_grid_mtot.py
+make_table.py
+noiseless_sbf.py
+size_picker.py
