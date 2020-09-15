@@ -126,7 +126,7 @@ before_script:
 
     # Get WFI data files
     - wget https://stsci.box.com/shared/static/jsscyxpkkuckuj96zdzh428r5ozpzpl1.txz -O $TRAVIS_BUILD_DIR/dsii_dwarfs/data/MIST_v1.2_vvcrit0.4_WFIRST.txz
-    - tar -xvjf $TRAVIS_BUILD_DIR/dsii_dwarfs/data/MIST_v1.2_vvcrit0.4_WFIRST.txz --directory $TRAVIS_BUILD_DIR/dsii_dwarfs/data/.
+    - tar -xvJf $TRAVIS_BUILD_DIR/dsii_dwarfs/data/MIST_v1.2_vvcrit0.4_WFIRST.txz --directory $TRAVIS_BUILD_DIR/dsii_dwarfs/data/.
 
     # Get HSC data files
     - wget https://stsci.box.com/shared/static/18l1syy5vzn5svdb9afkgomunjuucc68.gz -O $TRAVIS_BUILD_DIR/dsii_dwarfs/data/MIST_v1.2_vvcrit0.4.tar.gz
