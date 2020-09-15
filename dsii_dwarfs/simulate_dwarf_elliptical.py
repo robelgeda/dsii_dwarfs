@@ -771,9 +771,8 @@ class WFIDwarf(_SimulateDwarfEllipticalBase):
 
         # Static Parameters
         # -----------------
-        self.isochrone_dir = os.path.join(DATA_PATH, 'MIST_v1.2_vvcrit0.0_WFIRST')
-        self.isofilestring = 'MIST_v1.2_feh_%s%3.2f_afe_p0.0_vvcrit0.0_WFIRST.iso.cmd'
-
+        self.isochrone_dir = os.path.join(DATA_PATH, 'MIST_v1.2_vvcrit0.4_WFIRST')
+        self.isofilestring = 'MIST_v1.2_feh_%s%3.2f_afe_p0.0_vvcrit0.4_WFIRST.iso.cmd'
 
         self.isochrone_column_formatter = 'hsc_{}'
         self.inst_std = 0.02 * 2  # Estimate of std of WFI image background (noise)
