@@ -787,7 +787,7 @@ class WFIDwarf(_SimulateDwarfEllipticalBase):
         for b in self.bands:
             wfi = WFI()
             wfi.filter = b.replace(b[0], 'F')
-            psf_hdul = wfi.calc_psf(oversample=self.oversampling)
+            psf_hdul = wfi.calc_psf(oversample=int(self.oversampling))
             self.psf[b] = psf_hdul[b].data
 
         return self.psf
