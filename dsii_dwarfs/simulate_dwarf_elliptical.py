@@ -718,7 +718,7 @@ class WFIDwarf(_SimulateDwarfEllipticalBase):
     noise_range : tuple
         Noise range
     bands : list
-        List of filters to use. Default is ['F062', 'F087', 'F106', 'F129', 'F146', 'F158', 'F184']
+        List of filters to use. Default is ['R062', 'Z087', 'Y106', 'J129', 'W146', 'H158', 'F184']
     auto_npix : bool
         If set true, npix may be adjusted (expanded) if the galaxy does not fit
         into the initial npix value. The max size is set by the internal
@@ -749,7 +749,7 @@ class WFIDwarf(_SimulateDwarfEllipticalBase):
                  verbose=True):
 
         if bands is None:
-            bands = ['F062', 'F087', 'F106', 'F129', 'F146', 'F158', 'F184']
+            bands = ['R062', 'Z087', 'Y106', 'J129', 'W146', 'H158', 'F184']
 
         super().__init__(
             npix=npix,
@@ -771,22 +771,24 @@ class WFIDwarf(_SimulateDwarfEllipticalBase):
 
         # Static Parameters
         # -----------------
-        self.isochrone_dir = os.path.join(DATA_PATH, 'MIST_v1.2_vvcrit0.4', 'MIST_v1.2_vvcrit0.4_HSC')
-        self.isofilestring = 'MIST_v1.2_feh_%s%3.2f_afe_p0.0_vvcrit0.4_HSC.iso.cmd'
+        self.isochrone_dir = os.path.join(DATA_PATH, 'MIST_v1.2_vvcrit0.0_WFIRST')
+        self.isofilestring = 'MIST_v1.2_feh_%s%3.2f_afe_p0.0_vvcrit0.0_WFIRST.iso.cmd'
+
+
         self.isochrone_column_formatter = 'hsc_{}'
         self.inst_std = 0.02 * 2  # Estimate of std of WFI image background (noise)
         self.max_allowed_npix = 1024  # Only used if npix is None
 
         # Other Settings
         # --------------
-        self.preferred_band = 'F106'
+        self.preferred_band = 'Y106'
 
 
     def create_psf(self, **kwargs):
 
         for b in self.bands:
             wfi = WFI()
-            wfi.filter = b
+            wfi.filter = b.replace(b[0], 'F')
             psf_hdul = wfi.calc_psf(oversample=self.oversampling)
             self.psf[b] = psf_hdul[b].data
 
@@ -803,3 +805,5 @@ def simulate_wfi():
     sim.sum_components()
     sim.simulate_image()
     return sim
+
+
