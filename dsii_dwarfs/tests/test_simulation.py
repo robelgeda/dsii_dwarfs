@@ -1,5 +1,11 @@
-from dsii_dwarfs.simulate_psf_fit_dwarf_elliptical import SimulatePSFFitDwarfElliptical
+from ..simulate_dwarf_elliptical import HSCDwarf, WFIDwarf
 
-def test_simulate_psf_fit_dwarf_elliptical():
-    sim = SimulatePSFFitDwarfElliptical()
-    sim.run_all_steps()
+def test_hsc_dwarf(*args, **kwargs):
+    hsc_sim = HSCDwarf()
+    hsc_sim.run_all_steps()
+
+
+def test_wfi_dwarf(*args, **kwargs):
+    pass
+    wfi_sim = WFIDwarf()
+    wfi_sim.run_all_steps()
