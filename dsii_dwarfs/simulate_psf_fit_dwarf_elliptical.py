@@ -230,8 +230,12 @@ class SimulatePSFFitDwarfElliptical:
 
         # Compute the fraction of the total mass in the stochastic component
         # (the rest will be in the smooth component)
-        self.imf = imf.Kroupa(mmin=0.05, mmax=120, p1=0.3, p2=1.3,
-                              p3=2.3, break1=0.08, break2=0.5)
+
+        # self.imf = imf.Kroupa(mmin=0.05, mmax=120, p1=0.3, p2=1.3,
+        #                       p3=2.3, break1=0.08, break2=0.5)
+
+        self.imf = imf.Salpeter(mmin=0.3, mmax=120)
+
         self.imf.normalize()
 
         mmax = 200
@@ -325,8 +329,11 @@ class SimulatePSFFitDwarfElliptical:
 
         catalog_extra = 1.1  # Draw about 1.1 times as many stars as we need to allow the model
 
+        #cluster = imf.make_cluster(self.stochastic_mass_fraction * self.mass * catalog_extra,
+        #                           massfunc='kroupa', mmin=self.minmass_stochastic)
+
         cluster = imf.make_cluster(self.stochastic_mass_fraction * self.mass * catalog_extra,
-                                   massfunc='kroupa', mmin=self.minmass_stochastic)
+                                   massfunc=self.imf, mmin=self.minmass_stochastic)
 
         nstars = len(cluster) / catalog_extra
 
