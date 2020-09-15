@@ -189,7 +189,7 @@ class SimulatePSFFitDwarfElliptical:
         # Pick an isochrone given a mass, and compute flux at 10 pc in each band
         mp = IsochronePicker(self.isochrone_dir, self.isofilestring)
         t = mp.pick_isofile(self.log_mass, return_table=True)
-        self.isochrone = mp.agerows(self.mass, t)
+        self.isochrone = mp.agerows(t)
         self.age = mp.age
         self.feh = mp.feh
         self.isofile = mp.isofile
