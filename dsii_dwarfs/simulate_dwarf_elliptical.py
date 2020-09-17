@@ -69,18 +69,20 @@ def do_find_nearest(array, vals):
     return np.array([find_nearest(array, v) for v in vals])
 
 
+# Base class for simulating an elliptical dwarfs
 class _SimulateDwarfEllipticalBase:
     """
-    Base class for simulating an elliptical dwarfs
-
     Parameters
     ----------
     npix : int
         Number of pixels for the resulting image
     oversampling : int
         Oversampling factor for internal computations
+    distance : float
+        Distances for galaxy in Mpc. Overrides the random distance picker,
+        (`dmin` and `dmax` will not be used).
     dmin, dmax : float
-        Min and max distances for galaxy in Mpc
+        Min and max distances for galaxy in Mpc. Overridden if `distance` is defined.
     arcsec_per_pixel : float
         Pixel scale of image
     zpt :
@@ -96,7 +98,7 @@ class _SimulateDwarfEllipticalBase:
     noise_range : tuple
         Noise range
     bands : list
-        List of filters to use. Default is ['g', 'r', 'i', 'z', 'y']
+        List of filters to use.
     auto_npix : bool
         If set true, npix may be adjusted (expanded) if the galaxy does not fit
         into the initial npix value. The max size is set by the internal
@@ -112,8 +114,10 @@ class _SimulateDwarfEllipticalBase:
     def __init__(self,
                  npix=256,
                  oversampling=5.,
+                 distance=None,
                  dmin=1.,
                  dmax=10.,
+                 ellipticity=None,
                  arcsec_per_pixel=0.168,
                  zpt=27.,
                  mf_alpha=-1.3,
@@ -124,6 +128,8 @@ class _SimulateDwarfEllipticalBase:
                  bands=None,
                  auto_npix=False,
                  noiseless_only=False,
+                 isochrone_noscatter=False,
+                 size_noscatter=False,
                  verbose=True):
 
         if bands is None:
@@ -133,6 +139,7 @@ class _SimulateDwarfEllipticalBase:
         # ----------------
         self.oversampling = oversampling
 
+        self.distance = distance  # Random if not None
         self.dmin = dmin
         self.dmax = dmax
 
@@ -156,6 +163,8 @@ class _SimulateDwarfEllipticalBase:
         self.auto_npix = auto_npix
 
         self.noiseless_only = noiseless_only
+        self.isochrone_noscatter = isochrone_noscatter
+        self.size_noscatter = size_noscatter
 
         self.verbose = verbose
 
@@ -174,7 +183,6 @@ class _SimulateDwarfEllipticalBase:
 
         # Computed Variables
         # ------------------
-        self.distance = None
         self.mass = None
         self.log_mass = None
         self.isochrone = None
@@ -187,7 +195,7 @@ class _SimulateDwarfEllipticalBase:
         self.re_kpc = None
         self.re_arcsec = None
         self.re_pixels = None
-        self.ellipticity = None
+        self.ellipticity = ellipticity
         self.sersic_index = None
         self.position_angle = None  # radians
 
@@ -220,8 +228,9 @@ class _SimulateDwarfEllipticalBase:
     def pick_galaxy(self):
         # Pick a Distance
         # ---------------
-        dp = DistancePicker(dmin=self.dmin, dmax=self.dmax)
-        self.distance = dp.pick_distance()
+        if self.distance is None:
+            dp = DistancePicker(dmin=self.dmin, dmax=self.dmax)
+            self.distance = dp.pick_distance()
 
         # Pick a Mass
         # -----------
@@ -235,7 +244,8 @@ class _SimulateDwarfEllipticalBase:
         # Pick Isochrone
         # ---------------
         # Pick an isochrone given a mass, and compute flux at 10 pc in each band
-        mp = IsochronePicker(self.isochrone_dir, self.isofilestring)
+        mp = IsochronePicker(self.isochrone_dir, self.isofilestring,
+                             noscatter=self.isochrone_noscatter)
         t = mp.pick_isofile(self.log_mass, return_table=True)
         self.isochrone = mp.agerows(t)
         self.age = mp.age
@@ -256,15 +266,19 @@ class _SimulateDwarfEllipticalBase:
                                                                        self.distance,
                                                                        self.zpt[b])
 
-        # Pick a size
-        sp = SizePicker()  # Returns log10 of size in pc
+        # Pick a Size
+        # -----------
+        sp = SizePicker(noscatter=self.size_noscatter)  # Returns log10 of size in pc
         self.re_kpc = 10. ** (sp.size(np.array([self.log_mass]))[0]) / 1.e3  # convert to kpc
 
-        # Pick an axial ratio
-        qpdf = AxialRatioPDF(name='qpdf')
-        self.ellipticity = 1. - qpdf.rvs(size=1)[0]
+        # Pick an Axial Ratio
+        # --------------------
+        if self.ellipticity is None:
+            qpdf = AxialRatioPDF(name='qpdf')
+            self.ellipticity = 1. - qpdf.rvs(size=1)[0]
 
         # Set up the galaxy mass model
+        # ----------------------------
         self._setup_galaxy()
         self._create_mass_model()
 
@@ -283,7 +297,7 @@ class _SimulateDwarfEllipticalBase:
         # self.imf = imf.Kroupa(mmin=0.05, mmax=120, p1=0.3, p2=1.3,
         #                       p3=2.3, break1=0.08, break2=0.5)
 
-        self.imf = imf.Salpeter(mmin=0.3, mmax=120)
+        self.imf = imf.Salpeter(mmin=0.05, mmax=120)
 
         self.imf.normalize()
 
@@ -295,7 +309,7 @@ class _SimulateDwarfEllipticalBase:
 
         dn_dm = self.imf(m)
         self.smooth_flux = {}
-        selection = isochrone['initial_mass'] <= self.minmass_stochastic
+        selection = (isochrone['initial_mass'] <= self.minmass_stochastic) & (isochrone['initial_mass'] > 0.3)
         for b in self.bands:
             self.smooth_flux[b] = integrate.simps(m[selection], isochrone[b + 'flux'][selection] * dn_dm[selection])
 
@@ -351,12 +365,12 @@ class _SimulateDwarfEllipticalBase:
         self.mass_model = self.model_image * self.mass
 
     def renormalize_isochrone(self):
-        """Renormalize the isochrone fluxes according to galaxy mass & distance"""
+        """ Renormalize the isochrone fluxes according to galaxy mass & distance """
         for b in self.bands:
             self.isochrone[b] = observed_cts_per_sec(self.isochrone[b + 'flux'], self.distance, self.zpt[b])
 
     def compute_smooth_flux(self):
-        """Compute the smooth flux in each band"""
+        """ Compute the smooth flux in each band """
         self.observed_smooth_flux = {}
         for b in self.bands:
             self.observed_smooth_flux[b] = self.mass * (
@@ -382,7 +396,7 @@ class _SimulateDwarfEllipticalBase:
         #                           massfunc='kroupa', mmin=self.minmass_stochastic)
 
         cluster = imf.make_cluster(self.stochastic_mass_fraction * self.mass * catalog_extra,
-                                   massfunc=self.imf, mmin=self.minmass_stochastic)
+                                   massfunc='salpeter', mmin=self.minmass_stochastic)
 
         nstars = len(cluster) / catalog_extra
 
@@ -483,10 +497,7 @@ class _SimulateDwarfEllipticalBase:
         h['scale'] = (self.arcsec_per_pixel, "Arcsec/pixel")
         h['oversamp'] = (self.npix_oversampled, "Original oversampling")
         h['isofile'] = (os.path.basename(self.isofile), "Isochrone file")
-        for b in self.bands:
-            h[f'gamma_{b}'] = self.psf_gamma[b]
-        for b in self.bands:
-            h[f'alpha_{b}'] = self.psf_alpha[b]
+
         for b in self.bands:
             h[f'zpt_{b}'] = self.zpt[b]
 
@@ -501,7 +512,7 @@ class _SimulateDwarfEllipticalBase:
         noiseless_cube = np.stack([self.noiseless_image[b] for b in self.bands], axis=0)
         hdu_noiseless = fits.PrimaryHDU(noiseless_cube)
         self._write_header_keywords(hdu_noiseless)
-        hdu_noiseless.writeto(noiseless_file)
+        hdu_noiseless.writeto(noiseless_file, overwrite=True)
 
         # Write out the noisy image
         if not self.noiseless_only and not noiseless_only:
@@ -512,7 +523,7 @@ class _SimulateDwarfEllipticalBase:
             self._write_header_keywords(output_hdu)
             for b in self.bands:
                 output_hdu.header[f'noise_{b}'] = self.noise_sigma[b]
-            output_hdu.writeto(output_file)
+            output_hdu.writeto(output_file, overwrite=True)
 
             return [noiseless_file, output_file]
 
@@ -547,79 +558,30 @@ class _SimulateDwarfEllipticalBase:
 class HSCDwarf(_SimulateDwarfEllipticalBase):
     """
     Simulates an elliptical dwarf using the PSFs from the HSC
-
-    Parameters
-    ----------
-    npix : int
-        Number of pixels for the resulting image
-    oversampling : int
-        Oversampling factor for internal computations
-    dmin, dmax : float
-        Min and max distances for galaxy in Mpc
-    arcsec_per_pixel : float
-        Pixel scale of image
-    zpt :
-        HSC zero points that convert from Mag to counts per second in the image.
-    mf_alpha : float
-        The slope of the powerlaw portion of the luminosity function (-1.3 default)
-    mf_mstar : float
-        The mass of the break of the mass function (3.e10 solar masses defaut)
-    mf_min : float
-         The minimum mass (1.e5 default)
-    mf_max : float
-        The maximum mass
-    noise_range : tuple
-        Noise range
-    bands : list
-        List of filters to use. Default is ['g', 'r', 'i', 'z', 'y']
-    auto_npix : bool
-        If set true, npix may be adjusted (expanded) if the galaxy does not fit
-        into the initial npix value. The max size is set by the internal
-        class var max_allowed_npix
-    noiseless_only : bool
-        Only simulate noiseless galaxies.
-    verbose : bool
-        print information
     """
+
+    __doc__ += _SimulateDwarfEllipticalBase.__doc__
 
     instrument_name = "HSC"
 
     def __init__(self,
-                 npix=256,
-                 oversampling=5.,
-                 dmin=1.,
-                 dmax=10.,
+                 *args,
                  arcsec_per_pixel=0.168,
                  zpt=27.,
-                 mf_alpha=-1.3,
-                 mf_mstar=3.e10,
-                 mf_min=1.e5,
-                 mf_max=1.e9,
-                 noise_range=(0.015, 0.04),
                  bands=None,
-                 auto_npix=False,
-                 noiseless_only=False,
-                 verbose=True):
+                 verbose=True,
+                 **kwargs):
 
         if bands is None:
             bands = ['g', 'r', 'i', 'z', 'y']
 
         super().__init__(
-            npix=npix,
-            oversampling=oversampling,
-            dmin=dmin,
-            dmax=dmax,
+            *args,
             arcsec_per_pixel=arcsec_per_pixel,
             zpt=zpt,
-            mf_alpha=mf_alpha,
-            mf_mstar=mf_mstar,
-            mf_min=mf_min,
-            mf_max=mf_max,
-            noise_range=noise_range,
             bands=bands,
-            auto_npix=auto_npix,
-            noiseless_only=noiseless_only,
-            verbose=verbose
+            verbose=verbose,
+            **kwargs
         )
 
         # Static Parameters
@@ -675,16 +637,15 @@ class HSCDwarf(_SimulateDwarfEllipticalBase):
 
         return self.psf
 
-def simulate_hsc():
-    sim = HSCDwarf()
-    sim.pick_galaxy()
-    sim.renormalize_isochrone()
-    sim.compute_smooth_flux()
-    sim.create_smooth_portion()
-    sim.create_stochastic_portion()
-    sim.sum_components()
-    sim.simulate_image()
-    return sim
+    def _write_header_keywords(self, hdu):
+        super()._write_header_keywords(hdu)
+
+        h = hdu.header
+
+        for b in self.bands:
+            h[f'gamma_{b}'] = self.psf_gamma[b]
+        for b in self.bands:
+            h[f'alpha_{b}'] = self.psf_alpha[b]
 
 
 # ===
@@ -694,79 +655,30 @@ def simulate_hsc():
 class WFIDwarf(_SimulateDwarfEllipticalBase):
     """
     Simulates an elliptical dwarf using the PSFs from the WFI on Roman S.T.
-
-    Parameters
-    ----------
-    npix : int
-        Number of pixels for the resulting image
-    oversampling : int
-        Oversampling factor for internal computations
-    dmin, dmax : float
-        Min and max distances for galaxy in Mpc
-    arcsec_per_pixel : float
-        Pixel scale of image
-    zpt :
-        WFI zero points that convert from Mag to counts per second in the image.
-    mf_alpha : float
-        The slope of the powerlaw portion of the luminosity function (-1.3 default)
-    mf_mstar : float
-        The mass of the break of the mass function (3.e10 solar masses defaut)
-    mf_min : float
-         The minimum mass (1.e5 default)
-    mf_max : float
-        The maximum mass
-    noise_range : tuple
-        Noise range
-    bands : list
-        List of filters to use. Default is ['R062', 'Z087', 'Y106', 'J129', 'W146', 'H158', 'F184']
-    auto_npix : bool
-        If set true, npix may be adjusted (expanded) if the galaxy does not fit
-        into the initial npix value. The max size is set by the internal
-        class var max_allowed_npix
-    noiseless_only : bool
-        Only simulate noiseless galaxies.
-    verbose : bool
-        print information
     """
+
+    __doc__ += _SimulateDwarfEllipticalBase.__doc__
 
     instrument_name = "WFI"
 
     def __init__(self,
-                 npix=256,
-                 oversampling=5.,
-                 dmin=1.,
-                 dmax=10.,
-                 arcsec_per_pixel=0.168,
-                 zpt=27.,
-                 mf_alpha=-1.3,
-                 mf_mstar=3.e10,
-                 mf_min=1.e5,
-                 mf_max=1.e9,
-                 noise_range=(0.015, 0.04),
+                 *args,
+                 arcsec_per_pixel=0.11,
+                 zpt=26.166,
                  bands=None,
-                 auto_npix=False,
-                 noiseless_only=False,
-                 verbose=True):
+                 verbose=True,
+                 **kwargs):
 
         if bands is None:
             bands = ['R062', 'Z087', 'Y106', 'J129', 'W146', 'H158', 'F184']
 
         super().__init__(
-            npix=npix,
-            oversampling=oversampling,
-            dmin=dmin,
-            dmax=dmax,
+            *args,
             arcsec_per_pixel=arcsec_per_pixel,
             zpt=zpt,
-            mf_alpha=mf_alpha,
-            mf_mstar=mf_mstar,
-            mf_min=mf_min,
-            mf_max=mf_max,
-            noise_range=noise_range,
             bands=bands,
-            auto_npix=auto_npix,
-            noiseless_only=noiseless_only,
-            verbose=verbose
+            verbose=verbose,
+            **kwargs
         )
 
         # Static Parameters
@@ -779,7 +691,7 @@ class WFIDwarf(_SimulateDwarfEllipticalBase):
 
         # Other Settings
         # --------------
-        self.preferred_band = 'Y106'
+        self.preferred_band = 'J129'
 
 
     def create_psf(self, **kwargs):
@@ -791,17 +703,4 @@ class WFIDwarf(_SimulateDwarfEllipticalBase):
             self.psf[b] = psf_hdul[0].data
 
         return self.psf
-
-
-def simulate_wfi():
-    sim = WFIDwarf()
-    sim.pick_galaxy()
-    sim.renormalize_isochrone()
-    sim.compute_smooth_flux()
-    sim.create_smooth_portion()
-    sim.create_stochastic_portion()
-    sim.sum_components()
-    sim.simulate_image()
-    return sim
-
 

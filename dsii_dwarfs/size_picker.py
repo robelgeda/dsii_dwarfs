@@ -7,7 +7,7 @@ class SizePicker:
     linear relation of logRe vs logM* to that and measured the scatter. We use a t distribution
     with 5 degrees of freedom for the scatter to give it more outliers than a Gaussian.
     """
-    def __init__(self,noscatter=False):
+    def __init__(self, noscatter=False):
         self.c0 = 1.74038461
         self.c1 = 0.13943115
         self.sigma = 0.17
